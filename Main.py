@@ -4,10 +4,7 @@ import pyodbc;
 
 # ============================================================
 # Clase Propietarios
-# ------------------------------------------------------------
-# Molde que representa a un propietario dentro del sistema.
-# Cada campo corresponde a una columna de la tabla propietarios.
-# ============================================================
+## ============================================================
 class Propietarios:
     id:               int      = 0;
     apartamento_id:   int      = 0;
@@ -20,10 +17,7 @@ class Propietarios:
 
 # ============================================================
 # Clase Cuotas
-# ------------------------------------------------------------
-# Molde que representa una cuota de administración.
-# Cada cuota pertenece a un apartamento y a un propietario.
-# ============================================================
+## ============================================================
 class Cuotas:
     id:                int      = 0;
     apartamento_id:    int      = 0;
@@ -39,14 +33,10 @@ class Cuotas:
 
 # ============================================================
 # Clase Conexion
-# ------------------------------------------------------------
-# Encargada de toda la comunicación con la base de datos.
-# Contiene métodos para cada operación: SELECT, INSERT,
-# UPDATE y DELETE sobre la tabla de propietarios.
-# ============================================================
+## ============================================================
 class Conexion:
 
-    # "Pasaporte" para entrar a la base de datos
+    # Para entrar a la base de datos
     strConnection: str = """
         Driver={MySQL ODBC 9.0 Unicode Driver};
         Server=localhost;
@@ -57,9 +47,6 @@ class Conexion:
 
     # ----------------------------------------------------------
     # SELECT - Basica
-    # ----------------------------------------------------------
-    # Consulta todos los propietarios y los muestra en pantalla
-    # tal cual como vienen de la base de datos (filas crudas).
     # ----------------------------------------------------------
     def SelectBasico(self) -> None:
         conexion = pyodbc.connect(self.strConnection);
@@ -77,11 +64,6 @@ class Conexion:
 
     # ----------------------------------------------------------
     # SELECT - Lista de objetos
-    # ----------------------------------------------------------
-    # Consulta todos los propietarios y los convierte en una
-    # lista de objetos Propietarios para usar en el programa.
-    # Es más útil que SelectBasico() porque permite acceder
-    # a cada campo por su nombre (ej: p.nombre, p.email).
     # ----------------------------------------------------------
     def SelectLista(self) -> list:
         conexion = pyodbc.connect(self.strConnection);
@@ -110,10 +92,7 @@ class Conexion:
     # ----------------------------------------------------------
     # SELECT - Via stored procedure
     # ----------------------------------------------------------
-    # Llama al procedimiento almacenado que ya está guardado
-    # en MySQL. Hace lo mismo que SelectBasico() pero usando
-    # una función definida directamente en la base de datos.
-    # ----------------------------------------------------------
+  
     def SelectProcedimiento(self) -> None:
         conexion = pyodbc.connect(self.strConnection);
 
@@ -131,12 +110,7 @@ class Conexion:
     # ----------------------------------------------------------
     # INSERT - Agregar propietario
     # ----------------------------------------------------------
-    # Recibe un objeto Propietarios con todos sus datos y lo
-    # guarda como un nuevo registro en la base de datos.
-    # Los "?" evitan que alguien pueda inyectar código SQL
-    # malicioso (buena práctica de seguridad).
-    # Retorna True si todo salió bien, False si hubo error.
-    # ----------------------------------------------------------
+
     def Insert(self, entidad: Propietarios) -> bool:
         try:
             conexion = pyodbc.connect(self.strConnection);
@@ -161,21 +135,17 @@ class Conexion:
 
             cursor.close();
             conexion.close();
-            print("✔ Propietario insertado correctamente.");
+            print("Propietario insertado correctamente.");
             return True;
 
         except Exception as e:
-            print("✘ Error al insertar propietario: " + str(e));
+            print("Error al insertar propietario: " + str(e));
             return False;
 
     # ----------------------------------------------------------
     # UPDATE - Actualizar propietario
     # ----------------------------------------------------------
-    # Recibe un objeto Propietarios con los datos ya modificados
-    # y actualiza el registro en la BD buscándolo por su id.
-    # Solo se cambian los campos que se envían en el objeto.
-    # El "WHERE id=?" garantiza que solo se modifique ESE registro.
-    # ----------------------------------------------------------
+
     def Update(self, entidad: Propietarios) -> bool:
         try:
             conexion = pyodbc.connect(self.strConnection);
@@ -201,21 +171,17 @@ class Conexion:
 
             cursor.close();
             conexion.close();
-            print("✔ Propietario actualizado correctamente.");
+            print("Propietario actualizado correctamente.");
             return True;
 
         except Exception as e:
-            print("✘ Error al actualizar propietario: " + str(e));
+            print("Error al actualizar propietario: " + str(e));
             return False;
 
     # ----------------------------------------------------------
     # DELETE - Eliminar propietario
     # ----------------------------------------------------------
-    # Recibe el id del propietario que se quiere eliminar.
-    # El "WHERE id=?" protege de borrar toda la tabla.
-    # La coma en (id,) es requerida por Python para que lo
-    # interprete como una tupla y no como un número simple.
-    # ----------------------------------------------------------
+
     def Delete(self, id: int) -> bool:
         try:
             conexion = pyodbc.connect(self.strConnection);
@@ -227,11 +193,11 @@ class Conexion:
 
             cursor.close();
             conexion.close();
-            print("✔ Propietario eliminado correctamente.");
+            print("Propietario eliminado correctamente.");
             return True;
 
         except Exception as e:
-            print("✘ Error al eliminar propietario: " + str(e));
+            print("Error al eliminar propietario: " + str(e));
             return False;
 
 
@@ -325,30 +291,3 @@ conexion.SelectProcedimiento();
 print("\n" + "=" * 52);
 print("Fin del programa.");
 
-
-"""
--- REFERENCIA RAPIDA --
-
--- Tablas del sistema (15 en total):
-    1.  conjuntos       - Conjuntos residenciales
-    2.  torres          - Torres de cada conjunto
-    3.  apartamentos    - Apartamentos por torre
-    4.  propietarios    - Dueños de cada apartamento
-    5.  cuotas          - Cuotas de administración
-    6.  pagos           - Pagos de cuotas
-    7.  areas_comunes   - Zonas comunes (piscina, salon...)
-    8.  reservas        - Reservas de áreas comunes
-    9.  asambleas       - Reuniones de copropietarios
-    10. asistencias     - Asistencia a asambleas
-    11. empleados       - Personal del conjunto
-    12. novedades       - Incidentes reportados
-    13. proveedores     - Empresas contratadas
-    14. contratos       - Contratos con proveedores
-    15. vehiculos       - Vehículos registrados
-
--- Comandos:
-    py main.py
-
--- Instalar paquete:
-    py -m pip install pyodbc
-"""
