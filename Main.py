@@ -1,35 +1,6 @@
-# ============================================================
-# Sistema de Administración de Propiedad Horizontal
-# Versión 2 - API REST
-# ------------------------------------------------------------
-# Mejoras sobre la versión 1 (rama main):
-#   - Exposición de datos via API REST con Flask
-#   - Autenticación segura con tokens JWT (HS512)
-#   - Token enviado en el Header Authorization
-#   - Endpoints para las 4 operaciones CRUD
-#   - Endpoint adicional via Stored Procedure
-#   - Clase Autenticacion separada
-#   - Método ToDict() para serialización JSON
-#   - Validación centralizada de entrada y token
-#
-# GitHub: https://github.com/andreslav-sys/PropiedadHorizontal
-# Rama:   v2-api
-#
-# Paquetes requeridos:
-#   py -m pip install pyodbc
-#   py -m pip install Flask
-#   py -m pip install PyJWT
-#
-# Ejecutar:
-#   py main.py
-#
-# Endpoints:
-#   GET    /api/token
-#   GET    /api/propietarios
-#   GET    /api/propietarios/sp
-#   POST   /api/propietarios
-#   PUT    /api/propietarios
-#   DELETE /api/propietarios
+
+#   PUT    /api/propietarios/sp
+#   DELETE /api/propietarios/sp
 #
 # Autenticación:
 #   Todos los endpoints (excepto /api/token) requieren
@@ -95,19 +66,24 @@ class Cuotas:
 
 # ============================================================
 # CLASE: Conexion
+# ------------------------------------------------------------
+# Maneja todo el acceso a la base de datos.
+# Tiene dos grupos de métodos:
+#   - CRUD directo: SQL escrito en Python
+#   - CRUD via SP:  llama stored procedures de MySQL
 # ============================================================
 class Conexion:
 
     strConnection: str = "Driver={MySQL ODBC 9.6 Unicode Driver};Server=localhost;Database=db_ph;PORT=3306;user=user_python;password=Csfg6283427834;";
 
     # ----------------------------------------------------------
-    # SELECT - Retorna lista de objetos Propietarios
+    # CRUD DIRECTO
     # ----------------------------------------------------------
+
     def SelectLista(self) -> list:
         conexion = pyodbc.connect(self.strConnection);
         cursor   = conexion.cursor();
         cursor.execute("SELECT * FROM propietarios");
-
         lista: list = [];
         for elemento in cursor:
             entidad                = Propietarios();
@@ -119,50 +95,18 @@ class Conexion:
             entidad.email          = elemento[5];
             entidad.fecha_registro = elemento[6];
             lista.append(entidad);
-
         cursor.close();
         conexion.close();
         return lista;
 
-    # ----------------------------------------------------------
-    # SELECT - Via stored procedure
-    # ----------------------------------------------------------
-    def SelectProcedimiento(self) -> list:
-        conexion = pyodbc.connect(self.strConnection);
-        cursor   = conexion.cursor();
-        cursor.execute("{CALL proc_select_propietarios();}");
-
-        lista: list = [];
-        for elemento in cursor:
-            entidad                = Propietarios();
-            entidad.id             = elemento[0];
-            entidad.apartamento_id = elemento[1];
-            entidad.cedula         = elemento[2];
-            entidad.nombre         = elemento[3];
-            entidad.telefono       = elemento[4];
-            entidad.email          = elemento[5];
-            entidad.fecha_registro = elemento[6];
-            lista.append(entidad);
-
-        cursor.close();
-        conexion.close();
-        return lista;
-
-    # ----------------------------------------------------------
-    # INSERT
-    # ----------------------------------------------------------
     def Insert(self, entidad: Propietarios) -> bool:
         try:
             conexion = pyodbc.connect(self.strConnection);
             cursor   = conexion.cursor();
             cursor.execute(
                 "INSERT INTO propietarios (apartamento_id, cedula, nombre, telefono, email, fecha_registro) VALUES (?, ?, ?, ?, ?, ?)",
-                (entidad.apartamento_id,
-                 entidad.cedula,
-                 entidad.nombre,
-                 entidad.telefono,
-                 entidad.email,
-                 entidad.fecha_registro));
+                (entidad.apartamento_id, entidad.cedula, entidad.nombre,
+                 entidad.telefono, entidad.email, entidad.fecha_registro));
             conexion.commit();
             cursor.close();
             conexion.close();
@@ -170,21 +114,26 @@ class Conexion:
         except:
             return False;
 
-    # ----------------------------------------------------------
-    # UPDATE
-    # ----------------------------------------------------------
     def Update(self, entidad: Propietarios) -> bool:
         try:
             conexion = pyodbc.connect(self.strConnection);
             cursor   = conexion.cursor();
             cursor.execute(
                 "UPDATE propietarios SET apartamento_id=?, cedula=?, nombre=?, telefono=?, email=? WHERE id=?",
-                (entidad.apartamento_id,
-                 entidad.cedula,
-                 entidad.nombre,
-                 entidad.telefono,
-                 entidad.email,
-                 entidad.id));
+                (entidad.apartamento_id, entidad.cedula, entidad.nombre,
+                 entidad.telefono, entidad.email, entidad.id));
+            conexion.commit();
+            cursor.close();
+            conexion.close();
+            return True;
+        except:
+            return False;
+
+    def Delete(self, id: int) -> bool:
+        try:
+            conexion = pyodbc.connect(self.strConnection);
+            cursor   = conexion.cursor();
+            cursor.execute("DELETE FROM propietarios WHERE id=?", (id,));
             conexion.commit();
             cursor.close();
             conexion.close();
@@ -193,13 +142,67 @@ class Conexion:
             return False;
 
     # ----------------------------------------------------------
-    # DELETE
+    # CRUD VIA STORED PROCEDURES
     # ----------------------------------------------------------
-    def Delete(self, id: int) -> bool:
+
+    # SELECT via stored procedure
+    def SpSelectLista(self) -> list:
+        conexion = pyodbc.connect(self.strConnection);
+        cursor   = conexion.cursor();
+        cursor.execute("{CALL proc_select_propietarios()}");
+        lista: list = [];
+        for elemento in cursor:
+            entidad                = Propietarios();
+            entidad.id             = elemento[0];
+            entidad.apartamento_id = elemento[1];
+            entidad.cedula         = elemento[2];
+            entidad.nombre         = elemento[3];
+            entidad.telefono       = elemento[4];
+            entidad.email          = elemento[5];
+            entidad.fecha_registro = elemento[6];
+            lista.append(entidad);
+        cursor.close();
+        conexion.close();
+        return lista;
+
+    # INSERT via stored procedure
+    def SpInsert(self, entidad: Propietarios) -> bool:
         try:
             conexion = pyodbc.connect(self.strConnection);
             cursor   = conexion.cursor();
-            cursor.execute("DELETE FROM propietarios WHERE id=?", (id,));
+            cursor.execute(
+                "{CALL proc_insert_propietario(?, ?, ?, ?, ?)}",
+                (entidad.apartamento_id, entidad.cedula, entidad.nombre,
+                 entidad.telefono, entidad.email));
+            conexion.commit();
+            cursor.close();
+            conexion.close();
+            return True;
+        except:
+            return False;
+
+    # UPDATE via stored procedure
+    def SpUpdate(self, entidad: Propietarios) -> bool:
+        try:
+            conexion = pyodbc.connect(self.strConnection);
+            cursor   = conexion.cursor();
+            cursor.execute(
+                "{CALL proc_update_propietario(?, ?, ?, ?, ?, ?)}",
+                (entidad.id, entidad.apartamento_id, entidad.cedula,
+                 entidad.nombre, entidad.telefono, entidad.email));
+            conexion.commit();
+            cursor.close();
+            conexion.close();
+            return True;
+        except:
+            return False;
+
+    # DELETE via stored procedure
+    def SpDelete(self, id: int) -> bool:
+        try:
+            conexion = pyodbc.connect(self.strConnection);
+            cursor   = conexion.cursor();
+            cursor.execute("{CALL proc_delete_propietario(?)}", (id,));
             conexion.commit();
             cursor.close();
             conexion.close();
@@ -243,44 +246,32 @@ auth: Autenticacion = Autenticacion();
 # ============================================================
 # FUNCIÓN AUXILIAR: ValidarEntrada
 # ------------------------------------------------------------
-# Lee el token desde el Header "Authorization" y lo valida.
-# Retorna (data, error) — si hay error, data es None.
+# Lee el token desde el Header Authorization y lo valida.
+# Retorna (data, error).
 # ============================================================
 def ValidarEntrada() -> tuple:
     respuesta: dict = {};
-
-    # Leemos el token del header Authorization
     token = flask.request.headers.get("Authorization");
-
     if not token:
         respuesta["Error"]     = "NoAuthentication";
         respuesta["Respuesta"] = "ERROR";
         return None, flask.jsonify(respuesta);
-
     if not auth.ValidarToken(token):
         respuesta["Error"]     = "TokenInvalido";
         respuesta["Respuesta"] = "ERROR";
         return None, flask.jsonify(respuesta);
-
-    # Leemos el body JSON si existe
     try:
         data = flask.request.get_json(silent=True) or {};
     except:
         data = {};
-
     return data, None;
 
 
 # ============================================================
-# ENDPOINTS DE LA API
+# ENDPOINTS — CRUD DIRECTO
 # ============================================================
 
-# ----------------------------------------------------------
 # GET /api/token
-# ----------------------------------------------------------
-# Genera y devuelve un token JWT.
-# No requiere autenticación.
-# ----------------------------------------------------------
 @app.route("/api/token", methods=["GET"])
 def ObtenerToken() -> str:
     respuesta: dict = {};
@@ -294,13 +285,7 @@ def ObtenerToken() -> str:
         respuesta["Mensaje"]   = str(sys.exc_info());
         return flask.jsonify(respuesta);
 
-
-# ----------------------------------------------------------
 # GET /api/propietarios
-# ----------------------------------------------------------
-# Retorna todos los propietarios.
-# Header requerido: Authorization: <token>
-# ----------------------------------------------------------
 @app.route("/api/propietarios", methods=["GET"])
 def ObtenerPropietarios() -> str:
     respuesta: dict = {};
@@ -308,14 +293,13 @@ def ObtenerPropietarios() -> str:
         data, error = ValidarEntrada();
         if error:
             return error;
-
         lista           = db.SelectLista();
         entidades: dict = {};
         for p in lista:
             entidades[str(p.id)] = p.ToDict();
-
         respuesta["Entidades"] = entidades;
         respuesta["Total"]     = len(lista);
+        respuesta["Fuente"]    = "Directo";
         respuesta["Respuesta"] = "OK";
         respuesta["Fecha"]     = str(datetime.datetime.now());
         return flask.jsonify(respuesta);
@@ -324,13 +308,88 @@ def ObtenerPropietarios() -> str:
         respuesta["Mensaje"]   = str(sys.exc_info());
         return flask.jsonify(respuesta);
 
+# POST /api/propietarios
+# Body: {"apartamento_id":1,"cedula":"123","nombre":"Juan","telefono":"300...","email":"j@mail.com"}
+@app.route("/api/propietarios", methods=["POST"])
+def InsertarPropietario() -> str:
+    respuesta: dict = {};
+    try:
+        data, error = ValidarEntrada();
+        if error:
+            return error;
+        entidad                = Propietarios();
+        entidad.apartamento_id = data.get("apartamento_id", 1);
+        entidad.cedula         = data.get("cedula", "");
+        entidad.nombre         = data.get("nombre", "");
+        entidad.telefono       = data.get("telefono", "");
+        entidad.email          = data.get("email", "");
+        entidad.fecha_registro = datetime.datetime.now();
+        resultado = db.Insert(entidad);
+        respuesta["Respuesta"] = "OK" if resultado else "ERROR";
+        respuesta["Accion"]    = "INSERT";
+        respuesta["Fuente"]    = "Directo";
+        respuesta["Fecha"]     = str(datetime.datetime.now());
+        return flask.jsonify(respuesta);
+    except:
+        respuesta["Respuesta"] = "ERROR";
+        respuesta["Mensaje"]   = str(sys.exc_info());
+        return flask.jsonify(respuesta);
 
-# ----------------------------------------------------------
+# PUT /api/propietarios
+# Body: {"id":1,"apartamento_id":1,"cedula":"123","nombre":"Nuevo","telefono":"300...","email":"..."}
+@app.route("/api/propietarios", methods=["PUT"])
+def ActualizarPropietario() -> str:
+    respuesta: dict = {};
+    try:
+        data, error = ValidarEntrada();
+        if error:
+            return error;
+        entidad                = Propietarios();
+        entidad.id             = data.get("id", 0);
+        entidad.apartamento_id = data.get("apartamento_id", 1);
+        entidad.cedula         = data.get("cedula", "");
+        entidad.nombre         = data.get("nombre", "");
+        entidad.telefono       = data.get("telefono", "");
+        entidad.email          = data.get("email", "");
+        resultado = db.Update(entidad);
+        respuesta["Respuesta"] = "OK" if resultado else "ERROR";
+        respuesta["Accion"]    = "UPDATE";
+        respuesta["Fuente"]    = "Directo";
+        respuesta["Fecha"]     = str(datetime.datetime.now());
+        return flask.jsonify(respuesta);
+    except:
+        respuesta["Respuesta"] = "ERROR";
+        respuesta["Mensaje"]   = str(sys.exc_info());
+        return flask.jsonify(respuesta);
+
+# DELETE /api/propietarios
+# Body: {"id":5}
+@app.route("/api/propietarios", methods=["DELETE"])
+def EliminarPropietario() -> str:
+    respuesta: dict = {};
+    try:
+        data, error = ValidarEntrada();
+        if error:
+            return error;
+        id_eliminar = data.get("id", 0);
+        resultado   = db.Delete(id_eliminar);
+        respuesta["Respuesta"] = "OK" if resultado else "ERROR";
+        respuesta["Accion"]    = "DELETE";
+        respuesta["Fuente"]    = "Directo";
+        respuesta["Id"]        = id_eliminar;
+        respuesta["Fecha"]     = str(datetime.datetime.now());
+        return flask.jsonify(respuesta);
+    except:
+        respuesta["Respuesta"] = "ERROR";
+        respuesta["Mensaje"]   = str(sys.exc_info());
+        return flask.jsonify(respuesta);
+
+
+# ============================================================
+# ENDPOINTS — VIA STORED PROCEDURES
+# ============================================================
+
 # GET /api/propietarios/sp
-# ----------------------------------------------------------
-# Retorna propietarios via stored procedure.
-# Header requerido: Authorization: <token>
-# ----------------------------------------------------------
 @app.route("/api/propietarios/sp", methods=["GET"])
 def ObtenerPropietariosSP() -> str:
     respuesta: dict = {};
@@ -338,12 +397,10 @@ def ObtenerPropietariosSP() -> str:
         data, error = ValidarEntrada();
         if error:
             return error;
-
-        lista           = db.SelectProcedimiento();
+        lista           = db.SpSelectLista();
         entidades: dict = {};
         for p in lista:
             entidades[str(p.id)] = p.ToDict();
-
         respuesta["Entidades"] = entidades;
         respuesta["Total"]     = len(lista);
         respuesta["Fuente"]    = "StoredProcedure";
@@ -355,41 +412,25 @@ def ObtenerPropietariosSP() -> str:
         respuesta["Mensaje"]   = str(sys.exc_info());
         return flask.jsonify(respuesta);
 
-
-# ----------------------------------------------------------
-# POST /api/propietarios
-# ----------------------------------------------------------
-# Inserta un nuevo propietario.
-# Header requerido: Authorization: <token>
-# Body JSON:
-#   {
-#     "apartamento_id": 1,
-#     "cedula": "123456",
-#     "nombre": "Juan Perez",
-#     "telefono": "3001234567",
-#     "email": "juan@email.com"
-#   }
-# ----------------------------------------------------------
-@app.route("/api/propietarios", methods=["POST"])
-def InsertarPropietario() -> str:
+# POST /api/propietarios/sp
+# Body: {"apartamento_id":1,"cedula":"123","nombre":"Juan","telefono":"300...","email":"j@mail.com"}
+@app.route("/api/propietarios/sp", methods=["POST"])
+def InsertarPropietarioSP() -> str:
     respuesta: dict = {};
     try:
         data, error = ValidarEntrada();
         if error:
             return error;
-
         entidad                = Propietarios();
         entidad.apartamento_id = data.get("apartamento_id", 1);
         entidad.cedula         = data.get("cedula", "");
         entidad.nombre         = data.get("nombre", "");
         entidad.telefono       = data.get("telefono", "");
         entidad.email          = data.get("email", "");
-        entidad.fecha_registro = datetime.datetime.now();
-
-        resultado = db.Insert(entidad);
-
+        resultado = db.SpInsert(entidad);
         respuesta["Respuesta"] = "OK" if resultado else "ERROR";
         respuesta["Accion"]    = "INSERT";
+        respuesta["Fuente"]    = "StoredProcedure";
         respuesta["Fecha"]     = str(datetime.datetime.now());
         return flask.jsonify(respuesta);
     except:
@@ -397,30 +438,15 @@ def InsertarPropietario() -> str:
         respuesta["Mensaje"]   = str(sys.exc_info());
         return flask.jsonify(respuesta);
 
-
-# ----------------------------------------------------------
-# PUT /api/propietarios
-# ----------------------------------------------------------
-# Actualiza un propietario existente.
-# Header requerido: Authorization: <token>
-# Body JSON:
-#   {
-#     "id": 1,
-#     "apartamento_id": 1,
-#     "cedula": "123456",
-#     "nombre": "Nuevo Nombre",
-#     "telefono": "3009999999",
-#     "email": "nuevo@email.com"
-#   }
-# ----------------------------------------------------------
-@app.route("/api/propietarios", methods=["PUT"])
-def ActualizarPropietario() -> str:
+# PUT /api/propietarios/sp
+# Body: {"id":1,"apartamento_id":1,"cedula":"123","nombre":"Nuevo","telefono":"300...","email":"..."}
+@app.route("/api/propietarios/sp", methods=["PUT"])
+def ActualizarPropietarioSP() -> str:
     respuesta: dict = {};
     try:
         data, error = ValidarEntrada();
         if error:
             return error;
-
         entidad                = Propietarios();
         entidad.id             = data.get("id", 0);
         entidad.apartamento_id = data.get("apartamento_id", 1);
@@ -428,11 +454,10 @@ def ActualizarPropietario() -> str:
         entidad.nombre         = data.get("nombre", "");
         entidad.telefono       = data.get("telefono", "");
         entidad.email          = data.get("email", "");
-
-        resultado = db.Update(entidad);
-
+        resultado = db.SpUpdate(entidad);
         respuesta["Respuesta"] = "OK" if resultado else "ERROR";
         respuesta["Accion"]    = "UPDATE";
+        respuesta["Fuente"]    = "StoredProcedure";
         respuesta["Fecha"]     = str(datetime.datetime.now());
         return flask.jsonify(respuesta);
     except:
@@ -440,30 +465,20 @@ def ActualizarPropietario() -> str:
         respuesta["Mensaje"]   = str(sys.exc_info());
         return flask.jsonify(respuesta);
 
-
-# ----------------------------------------------------------
-# DELETE /api/propietarios
-# ----------------------------------------------------------
-# Elimina un propietario por id.
-# Header requerido: Authorization: <token>
-# Body JSON:
-#   {
-#     "id": 5
-#   }
-# ----------------------------------------------------------
-@app.route("/api/propietarios", methods=["DELETE"])
-def EliminarPropietario() -> str:
+# DELETE /api/propietarios/sp
+# Body: {"id":5}
+@app.route("/api/propietarios/sp", methods=["DELETE"])
+def EliminarPropietarioSP() -> str:
     respuesta: dict = {};
     try:
         data, error = ValidarEntrada();
         if error:
             return error;
-
         id_eliminar = data.get("id", 0);
-        resultado   = db.Delete(id_eliminar);
-
+        resultado   = db.SpDelete(id_eliminar);
         respuesta["Respuesta"] = "OK" if resultado else "ERROR";
         respuesta["Accion"]    = "DELETE";
+        respuesta["Fuente"]    = "StoredProcedure";
         respuesta["Id"]        = id_eliminar;
         respuesta["Fecha"]     = str(datetime.datetime.now());
         return flask.jsonify(respuesta);
@@ -478,11 +493,13 @@ def EliminarPropietario() -> str:
 # ============================================================
 print("=" * 55);
 print("  Sistema de Administración de Propiedad Horizontal");
-print("  Versión 2 - API REST + JWT");
+print("  Versión 2 - API REST + JWT + Stored Procedures");
 print("  GitHub: github.com/andreslav-sys/PropiedadHorizontal");
 print("  Rama: v2-api");
 print("=" * 55);
 print(f"  Servidor en http://{HOST}:{PORT}");
+print("  Endpoints CRUD directo: /api/propietarios");
+print("  Endpoints via SP:       /api/propietarios/sp");
 print("=" * 55);
 
 app.run(HOST, PORT);
