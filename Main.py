@@ -5,7 +5,7 @@
 # Mejoras sobre la versión 1 (rama main):
 #   - Exposición de datos via API REST con Flask
 #   - Autenticación segura con tokens JWT (HS512)
-#   - Encriptación de credenciales en el token
+#   - Token enviado en el Header Authorization
 #   - Endpoints para las 4 operaciones CRUD
 #   - Endpoint adicional via Stored Procedure
 #   - Clase Autenticacion separada
@@ -24,12 +24,16 @@
 #   py main.py
 #
 # Endpoints:
-#   GET    /api/token/generar
-#   GET    /api/propietarios/<json>
-#   GET    /api/propietarios/sp/<json>
-#   POST   /api/propietarios/<json>
-#   PUT    /api/propietarios/<json>
-#   DELETE /api/propietarios/<json>
+#   GET    /api/token
+#   GET    /api/propietarios
+#   GET    /api/propietarios/sp
+#   POST   /api/propietarios
+#   PUT    /api/propietarios
+#   DELETE /api/propietarios
+#
+# Autenticación:
+#   Todos los endpoints (excepto /api/token) requieren
+#   el header: Authorization: <token>
 # ============================================================
 
 import pyodbc;
@@ -43,19 +47,15 @@ import jwt;
 # ============================================================
 # CONFIGURACIÓN GLOBAL
 # ============================================================
-KEY_JWT: str = "976457hsdgfst8723643gsfhg";  # Clave secreta para firmar tokens JWT
-PORT:    int = 4040;                           # Puerto del servidor
-HOST:    str = "localhost";                    # Host del servidor
+KEY_JWT: str = "976457hsdgfst8723643gsfhg";
+PORT:    int = 4040;
+HOST:    str = "localhost";
 
 app = flask.Flask(__name__);
 
 
 # ============================================================
 # CLASE: Propietarios
-# ------------------------------------------------------------
-# Misma clase de la versión 1, pero ahora incluye ToDict()
-# que convierte el objeto a diccionario para enviarlo como JSON
-# a través de la API.
 # ============================================================
 class Propietarios:
     id:              int      = 0;
@@ -66,7 +66,7 @@ class Propietarios:
     email:           str      = "";
     fecha_registro:  datetime = datetime.datetime.now();
 
-    # NUEVO en v2: convierte el objeto a diccionario JSON
+    # Convierte el objeto a diccionario para enviarlo como JSON
     def ToDict(self) -> dict:
         return {
             "id":             self.id,
@@ -95,20 +95,10 @@ class Cuotas:
 
 # ============================================================
 # CLASE: Conexion
-# ------------------------------------------------------------
-# Igual que en la versión 1, maneja todo el acceso a la BD.
-# En v2 los métodos retornan listas de objetos en lugar de
-# imprimir directamente, para poder enviarlos por la API.
 # ============================================================
 class Conexion:
 
-    strConnection: str = """
-        Driver={MySQL ODBC 9.0 Unicode Driver};
-        Server=localhost;
-        Database=db_ph;
-        PORT=3306;
-        user=user_python;
-        password=Csfg6283427834;""";
+    strConnection: str = "Driver={MySQL ODBC 9.6 Unicode Driver};Server=localhost;Database=db_ph;PORT=3306;user=user_python;password=Csfg6283427834;";
 
     # ----------------------------------------------------------
     # SELECT - Retorna lista de objetos Propietarios
@@ -165,10 +155,8 @@ class Conexion:
         try:
             conexion = pyodbc.connect(self.strConnection);
             cursor   = conexion.cursor();
-            cursor.execute("""
-                INSERT INTO propietarios
-                    (apartamento_id, cedula, nombre, telefono, email, fecha_registro)
-                VALUES (?, ?, ?, ?, ?, ?)""",
+            cursor.execute(
+                "INSERT INTO propietarios (apartamento_id, cedula, nombre, telefono, email, fecha_registro) VALUES (?, ?, ?, ?, ?, ?)",
                 (entidad.apartamento_id,
                  entidad.cedula,
                  entidad.nombre,
@@ -189,10 +177,8 @@ class Conexion:
         try:
             conexion = pyodbc.connect(self.strConnection);
             cursor   = conexion.cursor();
-            cursor.execute("""
-                UPDATE propietarios
-                SET apartamento_id=?, cedula=?, nombre=?, telefono=?, email=?
-                WHERE id=?""",
+            cursor.execute(
+                "UPDATE propietarios SET apartamento_id=?, cedula=?, nombre=?, telefono=?, email=? WHERE id=?",
                 (entidad.apartamento_id,
                  entidad.cedula,
                  entidad.nombre,
@@ -223,33 +209,24 @@ class Conexion:
 
 
 # ============================================================
-# CLASE: Autenticacion  ← NUEVA en v2
+# CLASE: Autenticacion
 # ------------------------------------------------------------
-# Encapsula toda la lógica de seguridad JWT.
-# jwt.encode() firma el payload con la clave KEY_JWT usando
-# el algoritmo HS512 (HMAC-SHA512), generando un token
-# encriptado que solo puede validarse con la misma clave.
+# Maneja la generación y validación de tokens JWT.
+# El token se firma con algoritmo HS512 (HMAC-SHA512).
 # ============================================================
 class Autenticacion:
 
-    # Genera un token JWT firmado y encriptado con HS512
     def GenerarToken(self) -> str:
         payload = {
             "usuario": "api_ph",
             "sistema": "PropiedadHorizontal",
             "emitido": str(datetime.datetime.now()),
         };
-        # jwt.encode firma el payload — nadie puede falsificarlo
-        # sin conocer KEY_JWT
         token = jwt.encode(payload, KEY_JWT, algorithm="HS512");
         return token;
 
-    # Valida que el token sea auténtico y no haya sido alterado.
-    # Retorna True si es válido, False si fue modificado o es falso.
     def ValidarToken(self, token: str) -> bool:
         try:
-            # jwt.decode verifica la firma — si alguien alteró
-            # el token, esta línea lanza una excepción
             jwt.decode(token, KEY_JWT, algorithms=["HS512"]);
             return True;
         except:
@@ -264,46 +241,48 @@ auth: Autenticacion = Autenticacion();
 
 
 # ============================================================
-# FUNCIÓN AUXILIAR: ValidarEntrada  ← NUEVA en v2
+# FUNCIÓN AUXILIAR: ValidarEntrada
 # ------------------------------------------------------------
-# Parsea el JSON de entrada y valida el token en un solo lugar.
-# Todos los endpoints la reutilizan — evita repetir código.
+# Lee el token desde el Header "Authorization" y lo valida.
+# Retorna (data, error) — si hay error, data es None.
 # ============================================================
-def ValidarEntrada(entrada: str) -> tuple:
+def ValidarEntrada() -> tuple:
     respuesta: dict = {};
-    try:
-        data = json.loads(entrada);
-    except:
-        respuesta["Error"]     = "JSON invalido";
-        respuesta["Respuesta"] = "ERROR";
-        return None, flask.jsonify(respuesta);
 
-    if "Token" not in data:
+    # Leemos el token del header Authorization
+    token = flask.request.headers.get("Authorization");
+
+    if not token:
         respuesta["Error"]     = "NoAuthentication";
         respuesta["Respuesta"] = "ERROR";
         return None, flask.jsonify(respuesta);
 
-    if not auth.ValidarToken(data["Token"]):
+    if not auth.ValidarToken(token):
         respuesta["Error"]     = "TokenInvalido";
         respuesta["Respuesta"] = "ERROR";
         return None, flask.jsonify(respuesta);
+
+    # Leemos el body JSON si existe
+    try:
+        data = flask.request.get_json(silent=True) or {};
+    except:
+        data = {};
 
     return data, None;
 
 
 # ============================================================
-# ENDPOINTS DE LA API  ← NUEVOS en v2
+# ENDPOINTS DE LA API
 # ============================================================
 
 # ----------------------------------------------------------
-# GET /api/token/generar
+# GET /api/token
 # ----------------------------------------------------------
 # Genera y devuelve un token JWT.
-# No requiere autenticación — es el punto de entrada.
-# Ejemplo: GET http://localhost:4040/api/token/generar
+# No requiere autenticación.
 # ----------------------------------------------------------
-@app.route("/api/token/<string:entrada>", methods=["GET"])
-def ObtenerToken(entrada: str) -> str:
+@app.route("/api/token", methods=["GET"])
+def ObtenerToken() -> str:
     respuesta: dict = {};
     try:
         respuesta["Token"]     = auth.GenerarToken();
@@ -317,17 +296,16 @@ def ObtenerToken(entrada: str) -> str:
 
 
 # ----------------------------------------------------------
-# GET /api/propietarios/<json>
+# GET /api/propietarios
 # ----------------------------------------------------------
 # Retorna todos los propietarios.
-# Requiere Token válido en el JSON de entrada.
-# Ejemplo: GET http://localhost:4040/api/propietarios/{"Token":"..."}
+# Header requerido: Authorization: <token>
 # ----------------------------------------------------------
-@app.route("/api/propietarios/<string:entrada>", methods=["GET"])
-def ObtenerPropietarios(entrada: str) -> str:
+@app.route("/api/propietarios", methods=["GET"])
+def ObtenerPropietarios() -> str:
     respuesta: dict = {};
     try:
-        data, error = ValidarEntrada(entrada);
+        data, error = ValidarEntrada();
         if error:
             return error;
 
@@ -348,15 +326,16 @@ def ObtenerPropietarios(entrada: str) -> str:
 
 
 # ----------------------------------------------------------
-# GET /api/propietarios/sp/<json>
+# GET /api/propietarios/sp
 # ----------------------------------------------------------
-# Igual pero usando el stored procedure de MySQL.
+# Retorna propietarios via stored procedure.
+# Header requerido: Authorization: <token>
 # ----------------------------------------------------------
-@app.route("/api/propietarios/sp/<string:entrada>", methods=["GET"])
-def ObtenerPropietariosSP(entrada: str) -> str:
+@app.route("/api/propietarios/sp", methods=["GET"])
+def ObtenerPropietariosSP() -> str:
     respuesta: dict = {};
     try:
-        data, error = ValidarEntrada(entrada);
+        data, error = ValidarEntrada();
         if error:
             return error;
 
@@ -378,18 +357,24 @@ def ObtenerPropietariosSP(entrada: str) -> str:
 
 
 # ----------------------------------------------------------
-# POST /api/propietarios/<json>
+# POST /api/propietarios
 # ----------------------------------------------------------
 # Inserta un nuevo propietario.
-# Body esperado:
-#   {"Token":"...","apartamento_id":1,"cedula":"123",
-#    "nombre":"Juan","telefono":"300...","email":"j@mail.com"}
+# Header requerido: Authorization: <token>
+# Body JSON:
+#   {
+#     "apartamento_id": 1,
+#     "cedula": "123456",
+#     "nombre": "Juan Perez",
+#     "telefono": "3001234567",
+#     "email": "juan@email.com"
+#   }
 # ----------------------------------------------------------
-@app.route("/api/propietarios/<string:entrada>", methods=["POST"])
-def InsertarPropietario(entrada: str) -> str:
+@app.route("/api/propietarios", methods=["POST"])
+def InsertarPropietario() -> str:
     respuesta: dict = {};
     try:
-        data, error = ValidarEntrada(entrada);
+        data, error = ValidarEntrada();
         if error:
             return error;
 
@@ -414,18 +399,25 @@ def InsertarPropietario(entrada: str) -> str:
 
 
 # ----------------------------------------------------------
-# PUT /api/propietarios/<json>
+# PUT /api/propietarios
 # ----------------------------------------------------------
 # Actualiza un propietario existente.
-# Body esperado:
-#   {"Token":"...","id":1,"apartamento_id":1,"cedula":"123",
-#    "nombre":"Nuevo Nombre","telefono":"300...","email":"..."}
+# Header requerido: Authorization: <token>
+# Body JSON:
+#   {
+#     "id": 1,
+#     "apartamento_id": 1,
+#     "cedula": "123456",
+#     "nombre": "Nuevo Nombre",
+#     "telefono": "3009999999",
+#     "email": "nuevo@email.com"
+#   }
 # ----------------------------------------------------------
-@app.route("/api/propietarios/<string:entrada>", methods=["PUT"])
-def ActualizarPropietario(entrada: str) -> str:
+@app.route("/api/propietarios", methods=["PUT"])
+def ActualizarPropietario() -> str:
     respuesta: dict = {};
     try:
-        data, error = ValidarEntrada(entrada);
+        data, error = ValidarEntrada();
         if error:
             return error;
 
@@ -450,16 +442,20 @@ def ActualizarPropietario(entrada: str) -> str:
 
 
 # ----------------------------------------------------------
-# DELETE /api/propietarios/<json>
+# DELETE /api/propietarios
 # ----------------------------------------------------------
 # Elimina un propietario por id.
-# Body esperado: {"Token":"...","id":5}
+# Header requerido: Authorization: <token>
+# Body JSON:
+#   {
+#     "id": 5
+#   }
 # ----------------------------------------------------------
-@app.route("/api/propietarios/<string:entrada>", methods=["DELETE"])
-def EliminarPropietario(entrada: str) -> str:
+@app.route("/api/propietarios", methods=["DELETE"])
+def EliminarPropietario() -> str:
     respuesta: dict = {};
     try:
-        data, error = ValidarEntrada(entrada);
+        data, error = ValidarEntrada();
         if error:
             return error;
 

@@ -238,15 +238,99 @@ CREATE TABLE db_ph.vehiculos (
     CONSTRAINT fk_veh__prop FOREIGN KEY (propietario_id) REFERENCES db_ph.propietarios (id)
 );
 
+       
 -- ============================================================
--- STORED PROCEDURE: Seleccionar todos los propietarios
+-- Stored Procedures para la tabla propietarios
+-- Ejecutar en MySQL Workbench sobre la base de datos db_ph
 -- ============================================================
+ 
+USE db_ph;
+ 
+-- ============================================================
+-- 1. SELECT - Obtener todos los propietarios
+-- ============================================================
+DROP PROCEDURE IF EXISTS proc_select_propietarios;
 DELIMITER $$
-CREATE PROCEDURE db_ph.proc_select_propietarios()
+CREATE PROCEDURE proc_select_propietarios()
 BEGIN
-    SELECT * FROM db_ph.propietarios;
+    SELECT * FROM propietarios;
 END$$
 DELIMITER ;
+ 
+-- ============================================================
+-- 2. INSERT - Insertar un nuevo propietario
+--    Parámetros de entrada (IN):
+--      p_apartamento_id → id del apartamento
+--      p_cedula         → número de cédula
+--      p_nombre         → nombre completo
+--      p_telefono       → teléfono de contacto
+--      p_email          → correo electrónico
+-- ============================================================
+DROP PROCEDURE IF EXISTS proc_insert_propietario;
+DELIMITER $$
+CREATE PROCEDURE proc_insert_propietario(
+    IN p_apartamento_id INT,
+    IN p_cedula         VARCHAR(20),
+    IN p_nombre         VARCHAR(200),
+    IN p_telefono       VARCHAR(20),
+    IN p_email          VARCHAR(150)
+)
+BEGIN
+    INSERT INTO propietarios
+        (apartamento_id, cedula, nombre, telefono, email, fecha_registro)
+    VALUES
+        (p_apartamento_id, p_cedula, p_nombre, p_telefono, p_email, NOW());
+END$$
+DELIMITER ;
+ 
+-- ============================================================
+-- 3. UPDATE - Actualizar un propietario por id
+--    Parámetros de entrada (IN):
+--      p_id             → id del propietario a modificar
+--      p_apartamento_id → nuevo id de apartamento
+--      p_cedula         → nueva cédula
+--      p_nombre         → nuevo nombre
+--      p_telefono       → nuevo teléfono
+--      p_email          → nuevo correo
+-- ============================================================
+DROP PROCEDURE IF EXISTS proc_update_propietario;
+DELIMITER $$
+CREATE PROCEDURE proc_update_propietario(
+    IN p_id             INT,
+    IN p_apartamento_id INT,
+    IN p_cedula         VARCHAR(20),
+    IN p_nombre         VARCHAR(200),
+    IN p_telefono       VARCHAR(20),
+    IN p_email          VARCHAR(150)
+)
+BEGIN
+    UPDATE propietarios
+    SET apartamento_id = p_apartamento_id,
+        cedula         = p_cedula,
+        nombre         = p_nombre,
+        telefono       = p_telefono,
+        email          = p_email
+    WHERE id = p_id;
+END$$
+DELIMITER ;
+ 
+-- ============================================================
+-- 4. DELETE - Eliminar un propietario por id
+--    Parámetros de entrada (IN):
+--      p_id → id del propietario a eliminar
+-- ============================================================
+DROP PROCEDURE IF EXISTS proc_delete_propietario;
+DELIMITER $$
+CREATE PROCEDURE proc_delete_propietario(IN p_id INT)
+BEGIN
+    DELETE FROM propietarios WHERE id = p_id;
+END$$
+DELIMITER ;
+ 
+-- ============================================================
+-- Verificar que los 4 procedures quedaron creados
+-- ============================================================
+SHOW PROCEDURE STATUS WHERE Db = 'db_ph';       
 
 -- ============================================================
 -- DATOS DE PRUEBA
@@ -271,3 +355,4 @@ INSERT INTO db_ph.cuotas (apartamento_id, propietario_id, tipo, valor, fecha_ven
 VALUES (1, 1, 'ordinaria', 350000.00, '2026-04-30', 0),
        (2, 2, 'ordinaria', 350000.00, '2026-04-30', 1),
        (3, 3, 'ordinaria', 380000.00, '2026-04-30', 0);
+
